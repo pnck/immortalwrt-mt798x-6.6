@@ -91,6 +91,32 @@ mtwifi_vif_sta_set_data() {
 	json_add_string "$MTWIFI_CFG_IFNAME_KEY" "$ifname"
 }
 
+mtwifi_for_each_interface() {
+	local target_mode="$1"
+	shift
+
+	local ifaces iface iface_mode
+
+	json_get_keys ifaces interfaces
+	json_select interfaces
+	for iface in $ifaces; do
+		json_select "$iface"
+		json_select config
+		json_get_var iface_mode mode
+		json_select ..
+
+		[ -n "$target_mode" ] && [ "$iface_mode" != "$target_mode" ] && {
+			json_select ..
+			continue
+		}
+
+		__cur_interface="$iface"
+		"$@" "$iface"
+		json_select ..
+	done
+	json_select ..
+}
+
 drv_mtwifi_setup() {
 	ubus -t 120 wait_for network.interface.lan
 
@@ -106,15 +132,15 @@ drv_mtwifi_setup() {
 	MTWIFI_APCLI_IF_PREFIX="$(l1util get $dev apcli_ifname)"
 
 	AP_IDX=0
-	for_each_interface ap mtwifi_vif_ap_set_data
+	mtwifi_for_each_interface ap mtwifi_vif_ap_set_data
 
 	APCLI_IDX=0
-	for_each_interface sta mtwifi_vif_sta_set_data
+	mtwifi_for_each_interface sta mtwifi_vif_sta_set_data
+
+	mtwifi_for_each_interface ap mtwifi_vif_ap_config
+	mtwifi_for_each_interface sta mtwifi_vif_sta_config
 
 	json_dump | /sbin/mtwifi_cfg setup
-
-	for_each_interface ap mtwifi_vif_ap_config
-	for_each_interface sta mtwifi_vif_sta_config
 
 	wireless_set_up
 
